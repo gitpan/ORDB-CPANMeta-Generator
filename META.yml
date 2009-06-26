@@ -21,15 +21,16 @@ no_index:
     - t
 requires:
   CPAN::Mini: 0.576
-  CPAN::Mini::Visit: 0.04
-  DBI: 1.608
+  CPAN::Mini::Visit: 0.06
+  DBI: 1.609
   File::Basename: 0
   File::HomeDir: 0.86
   File::Path: 2.07
   File::Remove: 1.42
   File::Spec: 3.29
+  Getopt::Long: 2.34
   Object::Tiny: 1.06
-  Params::Util: 0.38
+  Params::Util: 1.00
   Parse::CPAN::Meta: 1.39
   Xtract::Publish: 0.10
   perl: 5.8.5
@@ -37,4 +38,4 @@ resources:
   ChangeLog: http://fisheye2.atlassian.com/changelog/cpan/trunk/ORDB-CPANMeta-Generator
   license: http://dev.perl.org/licenses/
   repository: http://svn.ali.as/cpan/trunk/ORDB-CPANMeta-Generator
-version: 0.02
+version: 0.03
