@@ -38,4 +38,4 @@ resources:
   ChangeLog: http://fisheye2.atlassian.com/changelog/cpan/trunk/ORDB-CPANMeta-Generator
   license: http://dev.perl.org/licenses/
   repository: http://svn.ali.as/cpan/trunk/ORDB-CPANMeta-Generator
-version: 0.05
+version: 0.06
