@@ -27,6 +27,10 @@ METHODS
     The "dsn" method returns the DBI DSN that is used to connect to the
     generated database.
 
+  run
+    The "run" method executes the process that will produce and fill the
+    final database.
+
 SUPPORT
     Bugs should be reported via the CPAN bug tracker at
 
