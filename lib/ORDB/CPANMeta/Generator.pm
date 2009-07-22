@@ -33,15 +33,16 @@ use File::Path         2.07 ();
 use File::Remove       1.42 ();
 use File::HomeDir      0.86 ();
 use File::Basename        0 ();
+use Module::CoreList   2.17 ();
 use Parse::CPAN::Meta  1.39 ();
 use Params::Util       1.00 qw{_HASH};
 use Getopt::Long       2.34 ();
 use DBI               1.609 ();
 use CPAN::Mini        0.576 ();
-use CPAN::Mini::Visit  0.08 ();
+use CPAN::Mini::Visit  0.11 ();
 use Xtract::Publish    0.10 ();
 
-our $VERSION = '0.08';
+our $VERSION = '0.10';
 
 use Object::Tiny 1.06 qw{
 	minicpan
@@ -175,6 +176,7 @@ sub run {
 	$dbh->do(<<'END_SQL');
 CREATE TABLE IF NOT EXISTS meta_distribution (
 	release TEXT NOT NULL,
+	meta INTEGER,
 	meta_name TEXT,
 	meta_version TEXT,
 	meta_abstract TEXT,
@@ -187,9 +189,10 @@ END_SQL
 	$dbh->do(<<'END_SQL');
 CREATE TABLE IF NOT EXISTS meta_dependency (
 	release TEXT NOT NULL,
-	phase TEXT NOT NULL,
 	module TEXT NOT NULL,
-	version TEXT NULL
+	version TEXT NULL,
+	phase TEXT NOT NULL,
+	core REAL NULL
 )
 END_SQL
 
@@ -255,6 +258,7 @@ END_SQL
 			my @deps = ();
 			my $dist = {
 				release => $the->{dist},
+				meta    => 0,
 			};
 			my @yaml = eval {
 				Parse::CPAN::Meta::LoadFile(
@@ -264,6 +268,7 @@ END_SQL
 				);
 			};
 			unless ( $@ ) {
+				$dist->{meta}           = 1;
 				$dist->{meta_name}      = $yaml[0]->{name};
 				$dist->{meta_version}   = $yaml[0]->{version};
 				$dist->{meta_abstract}  = $yaml[0]->{abstract};
@@ -271,17 +276,19 @@ END_SQL
 				$dist->{meta_from}      = $yaml[0]->{version_from};
 				$dist->{meta_license}   = $yaml[0]->{license},
 
-				my $requires = $yaml[0]->{requires} || {};
-				$requires = {
-					$requires => 0,
-				} unless ref $requires;
+				# Configure-time dependencies
+				my $configure = $yaml[0]->{configure_requires} || {};
+				$configure = {
+					$configure => 0,
+				} unless ref $configure;
 				push @deps, map { +{
 					release => $the->{dist},
-					phase   => 'runtime',
+					phase   => 'configure',
 					module  => $_,
-					version => $requires->{$_},
-				} } sort keys %$requires;
+					version => $configure->{$_},
+				} } sort keys %$configure;
 
+				# Build-time dependencies
 				my $build = $yaml[0]->{build_requires} || {};
 				$build = {
 					$build => 0,
@@ -293,20 +300,22 @@ END_SQL
 					version => $build->{$_},
 				} } sort keys %$build;
 
-				my $configure = $yaml[0]->{configure_requires} || {};
-				$configure = {
-					$configure => 0,
-				} unless ref $configure;
+				# Run-time dependencies
+				my $requires = $yaml[0]->{requires} || {};
+				$requires = {
+					$requires => 0,
+				} unless ref $requires;
 				push @deps, map { +{
 					release => $the->{dist},
-					phase   => 'configure',
+					phase   => 'runtime',
 					module  => $_,
-					version => $configure->{$_},
-				} } sort keys %$configure;
+					version => $requires->{$_},
+				} } sort keys %$requires;
 			}
 			$dbh->do(
-				'INSERT INTO meta_distribution VALUES ( ?, ?, ?, ?, ?, ?, ? )', {},
+				'INSERT INTO meta_distribution VALUES ( ?, ?, ?, ?, ?, ?, ?, ? )', {},
 				$dist->{release},
+				$dist->{meta},
 				$dist->{meta_name},
 				$dist->{meta_version},
 				$dist->{meta_abstract},
@@ -314,15 +323,18 @@ END_SQL
 				$dist->{meta_from},
 				$dist->{meta_license},
 			);
-			foreach ( @deps ) {
-				$dbh->do(
-					'INSERT INTO meta_dependency VALUES ( ?, ?, ?, ? )', {},
-					$_->{release},
-					$_->{phase},
-					$_->{module},
-					$_->{version},
-				);
-			}
+			$dbh->do(
+				'INSERT INTO meta_dependency VALUES ( ?, ?, ?, ?, ? )', {},
+				$_->{release},
+				$_->{module},
+				$_->{version},
+				$_->{phase},
+				$_->{module} eq 'perl'
+					? $_->{version}
+					: scalar Module::CoreList->first_release(
+						$_->{module}, $_->{version},
+					),
+			) foreach @deps;
 			unless ( $the->{counter} % 100 ) {
 				$dbh->commit;
 				$dbh->begin_work;
@@ -334,6 +346,11 @@ END_SQL
 
 	# Generate the indexes
 	$self->create_indexes( $dbh );
+
+	# Clean and optimise the database
+	$dbh->do('PRAGMA user_version = 10');
+	$dbh->do('VACUUM');
+	$dbh->do('ANALYZE main');
 
 	# Publish the database to the current directory
 	if ( defined $self->publish ) {
@@ -359,7 +376,7 @@ END_SQL
 ######################################################################
 # Index Management
 
-my @INDEX = (
+use constant INDEX => (
 	[ 'meta_distribution', 'release' ],
 	[ 'meta_dependency',   'release' ],
 	[ 'meta_dependency',   'phase'   ],
@@ -369,7 +386,7 @@ my @INDEX = (
 sub drop_indexes {
 	my $self = shift;
 	my $dbh  = shift;
-	foreach my $i ( @INDEX ) {
+	foreach my $i ( INDEX ) {
 		$dbh->do("DROP INDEX IF EXISTS $i->[0]__$i->[1]");
 	}
 	return 1;
@@ -378,19 +395,14 @@ sub drop_indexes {
 sub create_indexes {
 	my $self = shift;
 	my $dbh  = shift;
-	foreach my $i ( @INDEX ) {
+	foreach my $i ( INDEX ) {
 		$self->create_index( $dbh, @$i );
 	}
 	return 1;
 }
 
 sub create_index {
-	my $self = shift;
-	my $dbh  = shift;
-	my $t    = shift;
-	my $c    = shift;
-	$dbh->do("CREATE INDEX IF NOT EXISTS ${t}__${c} on $t ( $c )");
-	return 1;
+	$_[1]->do("CREATE INDEX IF NOT EXISTS $_[2]__$_[3] on $_[2] ( $_[3] )");
 }
 
 1;
