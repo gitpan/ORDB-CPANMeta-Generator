@@ -18,10 +18,10 @@ README
 script/cpan-metadb
 t/01_compile.t
 t/02_run.t
-t/97_meta.t
-t/98_pod.t
-t/99_pmv.t
 t/minicpan/authors/id/A/AD/ADAMK/Acme-Terror-AU-0.01.tar.gz
 t/minicpan/authors/id/A/AD/ADAMK/Config-Tiny-2.12.tar.gz
 t/minicpan/authors/id/A/AD/ADAMK/CSS-Tiny-1.15.tar.gz
 t/minicpan/authors/id/A/AN/ANDYA/HTML-Tiny-1.05.tar.gz
+xt/meta.t
+xt/pmv.t
+xt/pod.t

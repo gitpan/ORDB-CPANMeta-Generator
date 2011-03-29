@@ -27,22 +27,22 @@ L<Xtract> - Preparing the SQLite database for distribution
 
 use 5.008005;
 use strict;
-use Carp                    ();
-use File::Spec         3.29 ();
-use File::Path         2.07 ();
-use File::Remove       1.42 ();
-use File::HomeDir      0.86 ();
-use File::Basename        0 ();
-use Module::CoreList   2.17 ();
-use Parse::CPAN::Meta  1.39 ();
-use Params::Util       1.00 qw{_HASH};
-use Getopt::Long       2.34 ();
-use DBI               1.609 ();
-use CPAN::Mini        0.576 ();
-use CPAN::Mini::Visit  0.11 ();
-use Xtract::Publish    0.10 ();
+use Carp                     ();
+use File::Spec          3.29 ();
+use File::Path          2.07 ();
+use File::Remove        1.42 ();
+use File::HomeDir       0.86 ();
+use File::Basename         0 ();
+use Module::CoreList    2.46 ();
+use Parse::CPAN::Meta 1.4200 ();
+use Params::Util        1.00 ();
+use Getopt::Long        2.34 ();
+use DBI                1.609 ();
+use CPAN::Mini         0.576 ();
+use CPAN::Mini::Visit   0.11 ();
+use Xtract::Publish     0.12 ();
 
-our $VERSION = '0.10';
+our $VERSION = '0.11';
 
 use Object::Tiny 1.06 qw{
 	minicpan
@@ -157,7 +157,7 @@ sub run {
 	}
 
 	# Update the minicpan if needed
-	if ( _HASH($self->minicpan) ) {
+	if ( Params::Util::_HASH($self->minicpan) ) {
 		CPAN::Mini->update_mirror(
 			trace         => $self->trace,
 			no_conn_cache => 1,
@@ -260,24 +260,33 @@ END_SQL
 				release => $the->{dist},
 				meta    => 0,
 			};
-			my @yaml = eval {
-				Parse::CPAN::Meta::LoadFile(
-					File::Spec->catfile(
-						$the->{tempdir}, 'META.yml',
-					)
-				);
-			};
+			my $yaml_file = File::Spec->catfile(
+				$the->{tempdir}, 'META.yml',
+			);
+			my $json_file = File::Spec->catfile(
+				$the->{tempdir}, 'META.json',
+			);
+			my @data = ();
+			if ( -f $json_file ) {
+				@data = eval {
+					Parse::CPAN::Meta->load_file($json_file)
+				};
+			} elsif ( -f $yaml_file ) {
+				@data = eval {
+					Parse::CPAN::Meta->load_file($yaml_file)
+				};
+			}
 			unless ( $@ ) {
 				$dist->{meta}           = 1;
-				$dist->{meta_name}      = $yaml[0]->{name};
-				$dist->{meta_version}   = $yaml[0]->{version};
-				$dist->{meta_abstract}  = $yaml[0]->{abstract};
-				$dist->{meta_generated} = $yaml[0]->{generated_by};
-				$dist->{meta_from}      = $yaml[0]->{version_from};
-				$dist->{meta_license}   = $yaml[0]->{license},
+				$dist->{meta_name}      = $data[0]->{name};
+				$dist->{meta_version}   = $data[0]->{version};
+				$dist->{meta_abstract}  = $data[0]->{abstract};
+				$dist->{meta_generated} = $data[0]->{generated_by};
+				$dist->{meta_from}      = $data[0]->{version_from};
+				$dist->{meta_license}   = $data[0]->{license},
 
 				# Configure-time dependencies
-				my $configure = $yaml[0]->{configure_requires} || {};
+				my $configure = $data[0]->{configure_requires} || {};
 				$configure = {
 					$configure => 0,
 				} unless ref $configure;
@@ -289,7 +298,7 @@ END_SQL
 				} } sort keys %$configure;
 
 				# Build-time dependencies
-				my $build = $yaml[0]->{build_requires} || {};
+				my $build = $data[0]->{build_requires} || {};
 				$build = {
 					$build => 0,
 				} unless ref $build;
@@ -301,7 +310,7 @@ END_SQL
 				} } sort keys %$build;
 
 				# Run-time dependencies
-				my $requires = $yaml[0]->{requires} || {};
+				my $requires = $data[0]->{requires} || {};
 				$requires = {
 					$requires => 0,
 				} unless ref $requires;
@@ -423,7 +432,7 @@ Adam Kennedy E<lt>adamk@cpan.orgE<gt>
 
 =head1 COPYRIGHT
 
-Copyright 2009 Adam Kennedy.
+Copyright 2009 - 2011 Adam Kennedy.
 
 This program is free software; you can redistribute
 it and/or modify it under the same terms as Perl itself.

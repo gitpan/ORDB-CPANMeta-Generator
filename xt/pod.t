@@ -9,8 +9,8 @@ BEGIN {
 }
 
 my @MODULES = (
-	'Pod::Simple 3.07',
-	'Test::Pod 1.26',
+	'Pod::Simple 3.14',
+	'Test::Pod 1.44',
 );
 
 # Don't run tests for installs
