@@ -3,12 +3,13 @@ abstract: 'Generator for the CPAN Meta database'
 author:
   - 'Adam Kennedy <adamk@cpan.org>'
 build_requires:
-  ExtUtils::MakeMaker: 6.42
+  ExtUtils::MakeMaker: 6.59
   Test::More: 0.42
 configure_requires:
-  ExtUtils::MakeMaker: 6.42
+  ExtUtils::MakeMaker: 6.59
 distribution_type: module
-generated_by: 'Module::Install version 1.00'
+dynamic_config: 0
+generated_by: 'Module::Install version 1.06'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -21,8 +22,9 @@ no_index:
     - t
     - xt
 requires:
+  CPAN::Meta: 2.112621
   CPAN::Mini: 0.576
-  CPAN::Mini::Visit: 0.11
+  CPAN::Mini::Visit: 1.14
   DBI: 1.609
   File::Basename: 0
   File::HomeDir: 0.86
@@ -40,4 +42,4 @@ resources:
   ChangeLog: http://fisheye2.atlassian.com/changelog/cpan/trunk/ORDB-CPANMeta-Generator
   license: http://dev.perl.org/licenses/
   repository: http://svn.ali.as/cpan/trunk/ORDB-CPANMeta-Generator
-version: 0.11
+version: 0.12

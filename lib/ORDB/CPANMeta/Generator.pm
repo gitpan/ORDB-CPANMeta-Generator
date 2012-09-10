@@ -38,11 +38,12 @@ use Parse::CPAN::Meta 1.4200 ();
 use Params::Util        1.00 ();
 use Getopt::Long        2.34 ();
 use DBI                1.609 ();
+use CPAN::Meta      2.112621 ();
 use CPAN::Mini         0.576 ();
-use CPAN::Mini::Visit   0.11 ();
+use CPAN::Mini::Visit   1.14 ();
 use Xtract::Publish     0.12 ();
 
-our $VERSION = '0.11';
+our $VERSION = '0.12';
 
 use Object::Tiny 1.06 qw{
 	minicpan
@@ -218,7 +219,7 @@ END_SQL
 			);
 			if ( -f $path ) {
 				# Add to the ignore list
-				$seen{"$one/$two/$dist"} = 1;
+				$seen{$dist} = 1;
 				next;
 			}
 
@@ -235,7 +236,11 @@ END_SQL
 		$dbh->commit;
 
 		# NOW we need to start ignoring something
-		$ignore = [ sub { $seen{$_[0]} } ];
+		$ignore = [
+			sub {
+				$seen{ $_[0]->{dist} }
+			}
+		];
 	}
 
 	# Clear indexes for speed
@@ -255,6 +260,7 @@ END_SQL
 		callback   => sub {
 			print STDERR "$_[0]->{dist}\n" if $self->trace;
 			my $the  = shift;
+			my $meta = undef;
 			my @deps = ();
 			my $dist = {
 				release => $the->{dist},
@@ -266,60 +272,37 @@ END_SQL
 			my $json_file = File::Spec->catfile(
 				$the->{tempdir}, 'META.json',
 			);
-			my @data = ();
 			if ( -f $json_file ) {
-				@data = eval {
-					Parse::CPAN::Meta->load_file($json_file)
+				$meta = eval {
+					CPAN::Meta->load_file($json_file)
 				};
 			} elsif ( -f $yaml_file ) {
-				@data = eval {
-					Parse::CPAN::Meta->load_file($yaml_file)
+				$meta = eval {
+					CPAN::Meta->load_file($yaml_file)
 				};
 			}
-			unless ( $@ ) {
+			unless ( $@ or not defined $meta ) {
 				$dist->{meta}           = 1;
-				$dist->{meta_name}      = $data[0]->{name};
-				$dist->{meta_version}   = $data[0]->{version};
-				$dist->{meta_abstract}  = $data[0]->{abstract};
-				$dist->{meta_generated} = $data[0]->{generated_by};
-				$dist->{meta_from}      = $data[0]->{version_from};
-				$dist->{meta_license}   = $data[0]->{license},
+				$dist->{meta_name}      = $meta->name;
+				$dist->{meta_version}   = $meta->version;
+				$dist->{meta_abstract}  = $meta->abstract;
+				$dist->{meta_generated} = $meta->generated_by;
+				$dist->{meta_generated} =~ s/,.+//;
+				$dist->{meta_license}   = join ', ', $meta->licenses;
+				$dist->{meta_from}      = undef;
 
-				# Configure-time dependencies
-				my $configure = $data[0]->{configure_requires} || {};
-				$configure = {
-					$configure => 0,
-				} unless ref $configure;
-				push @deps, map { +{
-					release => $the->{dist},
-					phase   => 'configure',
-					module  => $_,
-					version => $configure->{$_},
-				} } sort keys %$configure;
-
-				# Build-time dependencies
-				my $build = $data[0]->{build_requires} || {};
-				$build = {
-					$build => 0,
-				} unless ref $build;
-				push @deps, map { +{
-					release => $the->{dist},
-					phase   => 'build',
-					module  => $_,
-					version => $build->{$_},
-				} } sort keys %$build;
-
-				# Run-time dependencies
-				my $requires = $data[0]->{requires} || {};
-				$requires = {
-					$requires => 0,
-				} unless ref $requires;
-				push @deps, map { +{
-					release => $the->{dist},
-					phase   => 'runtime',
-					module  => $_,
-					version => $requires->{$_},
-				} } sort keys %$requires;
+				# Fetch the dependency blocks
+				my $core = $meta->effective_prereqs;
+				foreach my $when ( qw{ configure build test runtime } ) {
+					my $requires = $core->requirements_for($when, 'requires');
+					my $hash     = $requires->as_string_hash;
+					push @deps, map { +{
+						release => $the->{dist},
+						phase   => $when,
+						module  => $_,
+						version => $hash->{$_},
+					} } sort keys %$hash;
+				}
 			}
 			$dbh->do(
 				'INSERT INTO meta_distribution VALUES ( ?, ?, ?, ?, ?, ?, ?, ? )', {},
@@ -432,7 +415,7 @@ Adam Kennedy E<lt>adamk@cpan.orgE<gt>
 
 =head1 COPYRIGHT
 
-Copyright 2009 - 2011 Adam Kennedy.
+Copyright 2009 - 2012 Adam Kennedy.
 
 This program is free software; you can redistribute
 it and/or modify it under the same terms as Perl itself.

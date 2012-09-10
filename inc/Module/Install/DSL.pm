@@ -4,7 +4,7 @@ package Module::Install::DSL;
 use strict;
 use vars qw{$VERSION $ISCORE};
 BEGIN {
-	$VERSION = '1.00';
+	$VERSION = '1.06';
 	$ISCORE  = 1;
 	*inc::Module::Install::DSL::VERSION = *VERSION;
 	@inc::Module::Install::DSL::ISA     = __PACKAGE__;
@@ -59,7 +59,8 @@ sub dsl2code {
 	my @lines = grep { /\S/ } split /[\012\015]+/, $dsl;
 
 	# Each line represents one command
-	my @code = ();
+	my @code   = ();
+	my $static = 1;
 	foreach my $line ( @lines ) {
 		# Split the lines into tokens
 		my @tokens = split /\s+/, $line;
@@ -74,6 +75,10 @@ sub dsl2code {
 				# This is the beginning of a suffix
 				push @suffix, $token;
 				push @suffix, @tokens;
+
+				# The conditional means this distribution
+				# can no longer be considered fully static.
+				$static = 0;
 				last;
 			} else {
 				# Convert to a string
@@ -86,6 +91,9 @@ sub dsl2code {
 		@tokens = ( $command, @params ? join( ', ', @params ) : (), @suffix );
 		push @code, join( ' ', @tokens ) . ";\n";
 	}
+
+	# Is our configuration static?
+	push @code, "static_config;\n" if $static;
 
 	# Join into the complete code block
 	return join( '', @code );
